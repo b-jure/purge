@@ -57,7 +57,10 @@ int purge_dir(const char* path, const char* target, unsigned char in)
         if(in && de->d_type != DT_DIR) unlink(de->d_name);
         else if(
             de->d_type == DT_DIR && strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
-            purge_dir(de->d_name, target, in);
+        {
+            if(purge_dir(de->d_name, target, strcmp(de->d_name, target) == 0) == 0)
+                rmdir(de->d_name);
+        }
     }
     closedir(dirp);
     return errno;
