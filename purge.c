@@ -21,6 +21,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define PATH_SEP '/'
+
 #define USAGE                                                                                      \
     "purge [OPTIONS]... PATH TARGET\n"                                                             \
     "   OPTIONS\n"                                                                                 \
@@ -31,6 +33,29 @@
     "       path where to start the purge.\n"                                                      \
     "   TARGET\n"                                                                                  \
     "       target file or directory to purge.\n"
+
+
+struct Buffer {
+    char path[BUFSIZ];
+    size_t len;
+};
+
+int path_append(struct Buffer* buffer, const char* str, unsigned char root)
+{
+    size_t len = strlen(str);
+    size_t n = len + buffer->len + (root ? 2 : 1);
+    if(n > sizeof(buffer->path)) return -1;
+    char* end = &buffer->path[buffer->len];
+    if(!root) {
+        *end++ = PATH_SEP;
+        buffer->len++;
+    }
+    memcpy(end, str, len);
+    buffer->len += len;
+    buffer->path[buffer->len] = '\0';
+    return 0;
+}
+
 
 int process_options(const char* opt, unsigned char* type)
 {
@@ -48,14 +73,21 @@ int process_options(const char* opt, unsigned char* type)
     return 0;
 }
 
-int process_args(int argc, char** argv, const char** path, const char** target, unsigned char* type)
+int process_args(
+    int argc,
+    char** argv,
+    struct Buffer* path,
+    const char** target,
+    unsigned char* type)
 {
+    if(argc == 0) return -1;
     while(argc-- > 0) {
         if((*argv)[0] == '-') { // HAVE OPTIONS ?
             if(process_options(&(*argv)[1], type) == -1) return -1;
+            argv++;
         } else {
             if(argc == 0) return -1;
-            *path = *argv++;
+            if(path_append(path, *argv++, 1) == -1) return -2;
             *target = *argv;
             break;
         }
@@ -63,55 +95,101 @@ int process_args(int argc, char** argv, const char** path, const char** target, 
     return 0;
 }
 
-int purge_dir(const char* path, const char* target, unsigned char in)
+int purge_dir(struct Buffer* path, const char* target, unsigned char in)
 {
-    DIR* dirp = opendir(path);
-    if(dirp == NULL) return -1;
-    errno = 0;
+    struct Buffer dirpath = *path;
+    int status;
+    DIR* dirp = opendir(path->path);
+    if(dirp == NULL) goto l_errno_error;
+    status = errno = 0;
     struct dirent* de;
     while((de = readdir(dirp))) {
-        if(in && de->d_type != DT_DIR) unlink(de->d_name);
-        else if(
+        if(path_append(path, de->d_name, 0) == -1) {
+            status = -1;
+            goto l_close_dir;
+        }
+        if(in && de->d_type != DT_DIR) {
+            unlink(path->path);
+        } else if(
             de->d_type == DT_DIR && strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
         {
-            if(purge_dir(de->d_name, target, strcmp(de->d_name, target) == 0) == 0)
-                rmdir(de->d_name);
+            if((status =
+                    purge_dir(path, target, (in = (in || (strcmp(de->d_name, target) == 0)))) ==
+                    -1))
+            {
+                goto l_close_dir;
+            } else if(status > 0) {
+                break;
+            } else if(in) {
+                rmdir(path->path);
+                in = 0; // just delete top-level directory
+            }
         }
+        *path = dirpath; // restore path
     }
+l_errno_error:
+    if((status = errno) != 0) perror("purge");
+l_close_dir:
     closedir(dirp);
-    return errno;
+    return status;
 }
 
-int purge_nondir(const char* path, const char* target)
+int purge_nondir(struct Buffer* path, const char* target)
 {
-    DIR* dirp = opendir(path);
-    if(dirp == NULL) return -1;
-    errno = 0;
+    struct Buffer dirpath = *path;
+    int status;
+    DIR* dirp = opendir(path->path);
+    if(dirp == NULL) goto l_errno_error;
+    status = errno = 0;
     struct dirent* de;
     while((de = readdir(dirp))) {
-        if(de->d_type != DT_DIR && strcmp(de->d_name, target) == 0) unlink(de->d_name);
-        else if(
+        if(path_append(path, de->d_name, 0) == -1) {
+            status = -1;
+            goto l_close_dir;
+        }
+        if(de->d_type != DT_DIR && strcmp(de->d_name, target) == 0) {
+            unlink(path->path);
+        } else if(
             de->d_type == DT_DIR && strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
-            purge_nondir(de->d_name, target);
+        {
+            if((status = purge_nondir(path, target) == -1)) {
+                goto l_close_dir;
+            } else if(status > 0) {
+                break;
+            }
+        }
+        *path = dirpath; // restore path
     }
+l_errno_error:
+    if((status = errno) != 0) perror("purge");
+l_close_dir:
     closedir(dirp);
-    return errno;
+    return status;
 }
 
 int main(int argc, char* argv[])
 {
+    struct Buffer path;
+    path.path[0] = '\0';
+    path.len = 0;
     int status = 0;
-    const char *path, *target = NULL;
+    const char* target = NULL;
     unsigned char type = 0;
     argv++, argc--;
-    if(argc == 0 || process_args(argc, argv, &path, &target, &type) == -1) {
+    status = process_args(argc, argv, &path, &target, &type);
+    if(status == -1) {
         fputs(USAGE, stderr);
         return 1;
+    } else if(status == -2) {
+    l_path_error:
+        fputs("purge: PATH length exceeded.\n", stderr);
+        return 1;
     }
-    if(type == 0) status = purge_nondir(path, target);
-    else status = purge_dir(path, target, 0);
+    if(type == 0) status = purge_nondir(&path, target);
+    else status = purge_dir(&path, target, 0);
+    if(status == -1) goto l_path_error;
     if(status != 0) {
-        perror("Errored while reading directory entries");
+        perror("purge");
         return status;
     }
     return 0;
