@@ -13,10 +13,13 @@ This is a file hierarchy before running `purge`:
 
 ---
 This command line
-> ./purge . goner1
-
+```
+./purge . goner1
+```
 or
-> ./purge -f . goner1
+```
+./purge -f . goner1
+```
 
 will result in this file hierarchy:
 
@@ -24,7 +27,9 @@ will result in this file hierarchy:
 ---
 
 Additionally running the program with these arguments:
-> ./purge -d . deletethis
+```
+./purge -d . deletethis
+```
 
 will result in this file hierarchy:
 
@@ -34,13 +39,38 @@ will result in this file hierarchy:
 If some things are unclear please just run `purge` without arguments,
 and check the usage there, cba explaining any further.
 
-## Building
+## Build
 
 clone the repository and run:
-> make
+```
+make
+```
 
 If you wish to build binary with debug symbols enabled then run:
-> make debug
+```
+make debug
+```
 
 if you wish to have more control on how the binary builds just
 edit the single `Makefile` to your liking.
+
+---
+
+#### PKGBUILD/AUR
+In case you are running Arch-based Linux distribution there is
+also `PKGBUILD` provided, build and install like this:
+```
+makepkg
+pacman -U {package}.pkg.tar.zst
+```
+make sure to replace `{package}` with the actual package name.
+
+Or you can build and install using `pamac` or `yay` because
+I am already hosting an AUR package, simply run this in your terminal:
+```
+pamac install purge
+```
+or
+```
+yay -S purge
+```
