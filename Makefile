@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -O2 -Wall -Wextra -std=c99
-DFLAGS = -ggdb -Wall -Wextra -std=c99
+CFLAGS = -Wl,-z,relro,-z,now -O2 -Wall -Wextra -std=c99
+DCFLAGS = -ggdb -Wall -Wextra -std=c99
 BUILD_DIR = build
 BIN := $(BUILD_DIR)/purge
 DBIN := $(BUILD_DIR)/dpurge
@@ -16,10 +16,10 @@ $(BUILD_DIR)/purge.o: purge.c
 debug: $(BUILD_DIR) $(DBIN)
 
 $(DBIN): $(BUILD_DIR)/dpurge.o
-	$(CC) $(DFLAGS) $< -o $@
+	$(CC) $(DCFLAGS) $< -o $@
 
 $(BUILD_DIR)/dpurge.o: purge.c
-	$(CC) $(DFLAGS) -c $< -o $@
+	$(CC) $(DCFLAGS) -c $< -o $@
 
 $(BUILD_DIR):
 	mkdir -p build
