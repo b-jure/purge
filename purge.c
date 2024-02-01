@@ -113,19 +113,22 @@ int purge_dir(struct Buffer* path, const char* target, unsigned char in)
         } else if(
             de->d_type == DT_DIR && strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
         {
-            if((status =
-                    purge_dir(path, target, (in = (in || (strcmp(de->d_name, target) == 0)))) ==
-                    -1))
-            {
+            unsigned char istarget = (in || strcmp(de->d_name, target) == 0);
+            if((status = purge_dir(path, target, istarget) == -1)) {
                 goto l_close_dir;
             } else if(status > 0) {
-                break;
-            } else if(in) {
-                rmdir(path->path);
-                in = 0; // just delete top-level directory
+                goto l_errno_error;
             }
         }
         *path = dirpath; // restore path
+    }
+    if(in) {
+        closedir(dirp);
+        if(rmdir(path->path) != 0) {
+            perror("purge");
+            return errno;
+        }
+        return 0;
     }
 l_errno_error:
     if((status = errno) != 0) perror("purge");
