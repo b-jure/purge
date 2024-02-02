@@ -68,7 +68,7 @@ make sure to replace `{package}` with the actual package name.
 Or you can build and install using `pamac` or `yay` because
 I am already hosting an AUR package, simply run this in your terminal:
 ```
-pamac install purge
+pamac build purge
 ```
 or
 ```
